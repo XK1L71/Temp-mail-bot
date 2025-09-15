@@ -112,17 +112,31 @@ def get_inbox(email):
         print("[Error] get_inbox:", e)
         return []
 
+def answer_callback_query(callback_id):
+    """Prevent duplicate triggers"""
+    url = API_URL + "answerCallbackQuery"
+    payload = {"callback_query_id": callback_id}
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req)
+    except:
+        pass
+
 def main():
     last_update_id = None
     print("🤖 Bot is running...")
     while True:
         updates = get_updates(last_update_id)
         for update in updates.get("result", []):
-            last_update_id = update["update_id"] + 1
             if "message" in update:
                 handle_command(update["message"])
             elif "callback_query" in update:
                 handle_callback(update["callback_query"])
+                answer_callback_query(update["callback_query"]["id"])
+
+            # offset update must be last
+            last_update_id = update["update_id"] + 1
         time.sleep(1)
 
 if __name__ == "__main__":
