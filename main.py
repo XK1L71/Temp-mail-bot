@@ -5,28 +5,50 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 logging.basicConfig(level=logging.INFO)
 TOKEN = "8455111408:AAFG0doukDgec2jVBafKvzGOVTxnXLxeXCk"
 
-# Generate temp mail
+BASE_URL = "https://api.mail.tm"
+
+# Create account + email
 def generate_email():
-    url = "https://www.1secmail.com/api/v1/?action=genRandomMailbox&count=1"
     try:
-        resp = requests.get(url, timeout=5)
-        data = resp.json()
-        if data and isinstance(data, list):
-            return data[0]
+        # random username
+        import uuid
+        username = str(uuid.uuid4())[:8]
+        password = "Pass@" + username
+
+        # register temp mail
+        resp = requests.post(
+            f"{BASE_URL}/accounts",
+            json={"address": f"{username}@bugfoo.com", "password": password},
+            timeout=8,
+        )
+        if resp.status_code not in (200, 201):
+            return None
+
+        email = resp.json()["address"]
+
+        # login to get token
+        token_resp = requests.post(
+            f"{BASE_URL}/token",
+            json={"address": email, "password": password},
+            timeout=8,
+        )
+        token = token_resp.json().get("token")
+
+        return {"email": email, "password": password, "token": token}
     except Exception as e:
         logging.error(f"Email generate error: {e}")
-    return None
+        return None
 
 # /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    email = generate_email()
-    if not email:
+    account = generate_email()
+    if not account:
         await update.message.reply_text("⚠️ Could not generate email. Try again later.")
         return
-    context.user_data["email"] = email
+    context.user_data["account"] = account
     await update.message.reply_text(
         f"👋 Welcome to Temp Mail Bot!\n\n"
-        f"📧 Your Email: {email}\n\n"
+        f"📧 Your Email: {account['email']}\n\n"
         f"Commands:\n"
         f"/inbox - Check inbox\n"
         f"/delete - Delete email\n"
@@ -36,23 +58,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /inbox command
 async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    email = context.user_data.get("email")
-    if not email:
+    account = context.user_data.get("account")
+    if not account:
         await update.message.reply_text("❌ No email set. Use /start first.")
         return
     try:
-        login, domain = email.split("@")
-        resp = requests.get(
-            f"https://www.1secmail.com/api/v1/?action=getMessages&login={login}&domain={domain}",
-            timeout=5
-        )
-        mails = resp.json()
+        headers = {"Authorization": f"Bearer {account['token']}"}
+        resp = requests.get(f"{BASE_URL}/messages", headers=headers, timeout=8)
+        mails = resp.json().get("hydra:member", [])
+
         if not mails:
             await update.message.reply_text("📭 Inbox is empty.")
         else:
             text = "📨 Inbox:\n\n"
             for m in mails:
-                text += f"From: {m['from']}\nSubject: {m['subject']}\n\n"
+                text += f"From: {m['from']['address']}\nSubject: {m['subject']}\n\n"
             await update.message.reply_text(text)
     except Exception as e:
         logging.error(f"Inbox error: {e}")
@@ -60,21 +80,21 @@ async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /delete command
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if "email" in context.user_data:
-        del context.user_data["email"]
+    if "account" in context.user_data:
+        del context.user_data["account"]
         await update.message.reply_text("🗑️ Email deleted successfully.")
     else:
         await update.message.reply_text("❌ No email to delete.")
 
 # /new command
 async def new_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    email = generate_email()
-    if not email:
+    account = generate_email()
+    if not account:
         await update.message.reply_text("⚠️ Could not generate new email. Try again later.")
         return
-    context.user_data["email"] = email
+    context.user_data["account"] = account
     await update.message.reply_text(
-        f"🔄 New Temp Mail Generated!\n📧 {email}\n\n"
+        f"🔄 New Temp Mail Generated!\n📧 {account['email']}\n\n"
         f"Use /inbox to check emails."
     )
 
