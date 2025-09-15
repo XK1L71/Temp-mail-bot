@@ -1,7 +1,6 @@
 services:
   - type: worker
-    name: telegram-temp-mail-bot
+    name: temp-mail-bot
     env: python
-    buildCommand: "pip install -r requirements.txt"
+    buildCommand: ""
     startCommand: "python main.py"
-    plan: free
